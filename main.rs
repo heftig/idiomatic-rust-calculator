@@ -6,9 +6,12 @@ use core::panic::PanicInfo;
 
 extern "C" {
     fn puts(msg: *const c_char);
+    fn printf(fmt: *const c_char, ...);
     fn fgets(s: *mut c_char, n: c_int, stream: *mut c_void) -> *mut c_char;
 
     static mut stdin: *mut c_void;
+
+    fn eval(s: *const c_char) -> i32;
 }
 
 #[panic_handler]
@@ -19,6 +22,8 @@ unsafe fn panic(_info: &PanicInfo) -> ! {
 
 #[no_mangle]
 unsafe extern "C" fn _ZN4core9panicking30panic_null_pointer_dereference17h602c36c59c471956E() {}
+#[no_mangle]
+unsafe extern "C" fn _ZN4core9panicking11panic_const24panic_const_div_overflow17hed073de60461d30aE() {}
 
 #[no_mangle]
 unsafe extern "C" fn main() -> i32 {
@@ -28,7 +33,12 @@ unsafe extern "C" fn main() -> i32 {
         let mut buf = [0u8; BUF_SIZE];
         let ptr = buf.as_mut_ptr() as *mut c_char;
         
-        fgets(ptr, BUF_SIZE as c_int, stdin);
-        puts(ptr);
+        if fgets(ptr, BUF_SIZE as c_int, stdin).is_null() {
+            break;
+        }
+        
+        let result = eval(ptr);
+        printf("result: %d\n\0".as_ptr() as *const c_char, result);
     }
+    return 0;
 }
