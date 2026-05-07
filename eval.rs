@@ -1,96 +1,80 @@
-#![no_std]
-#![no_main]
-#![crate_type = "lib"]
-
-use core::ffi::c_char;
-
-static mut INPUT: *const c_char = core::ptr::null();
-static mut POS: isize = 0;
-
-unsafe fn peek_char() -> Option<u8> {
-    let c = *INPUT.offset(POS) as u8;
-    if c == 0 {
-        return None;
-    } else {
-        return Some(c);
-    }
+pub struct Evaluator<'a> {
+    input: &'a [u8],
 }
 
-unsafe fn next_char() -> Option<u8> {
-    let c = peek_char();
-    if c.is_some() {
-        POS += 1;
+impl<'a> Evaluator<'a> {
+    pub fn eval(input: &'a [u8]) -> i32 {
+        let mut evaluator = Self { input };
+        evaluator.parse_expr()
     }
-    return c;
-}
 
-unsafe fn skip_ws() {
-    while let Some(c) = peek_char() {
-        if c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' {
-            next_char();
-        } else {
-            break;
-        }
+    fn peek_char(&self) -> Option<u8> {
+        self.input.first().copied()
     }
-}
 
-unsafe fn parse_number() -> i32 {
-    skip_ws();
-    let mut res = 0;
-    while let Some(c) = peek_char() {
-        if c >= b'0' && c <= b'9' {
-            res = res * 10 + (c - b'0') as i32;
-            next_char();
-        } else {
-            break;
-        }
+    fn advance(&mut self) {
+        self.input = self.input.get(1..).unwrap_or(&[]);
     }
-    return res;
-}
 
-unsafe fn parse_term() -> i32 {
-    let mut res = parse_number();
-    loop {
-        skip_ws();
-        match peek_char() {
-            Some(b'*') => {
-                next_char();
-                res *= parse_number();
+    fn skip_ws(&mut self) {
+        while let Some(c) = self.peek_char() {
+            if c == b' ' || c == b'\t' || c == b'\n' || c == b'\r' {
+                self.advance();
+            } else {
+                break;
             }
-            Some(b'/') => {
-                next_char();
-                let divisor = parse_number();
-                if divisor != 0 {
-                    res /= divisor;
+        }
+    }
+    fn parse_number(&mut self) -> i32 {
+        self.skip_ws();
+        let mut res = 0;
+        while let Some(c) = self.peek_char() {
+            if c >= b'0' && c <= b'9' {
+                res = res * 10 + (c - b'0') as i32;
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        res
+    }
+    fn parse_term(&mut self) -> i32 {
+        let mut res = self.parse_number();
+        loop {
+            self.skip_ws();
+            match self.peek_char() {
+                Some(b'*') => {
+                    self.advance();
+                    res *= self.parse_number();
                 }
+                Some(b'/') => {
+                    self.advance();
+                    let divisor = self.parse_number();
+                    if divisor != 0 {
+                        res /= divisor;
+                    }
+                }
+                _ => break,
             }
-            _ => break,
         }
+        res
     }
-    return res;
-}
-
-unsafe fn parse_expr() -> i32 {
-    let mut res = parse_term();
-    loop {
-        skip_ws();
-        match peek_char() {
-            Some(b'+') => {
-                next_char();
-                res += parse_term();
+    fn parse_expr(&mut self) -> i32 {
+        let mut res = self.parse_term();
+        loop {
+            self.skip_ws();
+            match self.peek_char() {
+                Some(b'+') => {
+                    self.advance();
+                    res += self.parse_term();
+                }
+                Some(b'-') => {
+                    self.advance();
+                    res -= self.parse_term();
+                }
+                _ => break,
             }
-            Some(b'-') => {
-                next_char();
-                res -= parse_term();
-            }
-            _ => break,
         }
+        res
     }
-    res
-}
-
-pub unsafe fn eval(s: *const c_char) -> i32 {
-    INPUT = s;
-    POS = 0;
-    parse_expr()
 }

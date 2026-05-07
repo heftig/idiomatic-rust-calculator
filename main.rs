@@ -42,8 +42,10 @@ unsafe extern "C" fn main() -> i32 {
             }
         }
 
-        let expr = CStr::from_bytes_until_nul(&buf).unwrap_or_default();
-        let result = unsafe { eval::eval(expr.as_ptr()) };
+        let expr = CStr::from_bytes_until_nul(&buf)
+            .unwrap_or_default()
+            .to_bytes();
+        let result = eval::Evaluator::eval(expr);
 
         unsafe { libc::printf(c"result: %d\n".as_ptr(), result) };
     }
