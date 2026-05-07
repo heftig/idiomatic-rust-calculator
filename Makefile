@@ -1,5 +1,16 @@
 TARGET := build/calc
 
+RUSTC := rustc
+RUSTFLAGS := -C opt-level=z -C overflow-checks=off -C strip=symbols
+RUST_TARGET := $(shell $(RUSTC) --print host-tuple)
+COMPILE_RUST := $(RUSTC) --edition 2024 --target $(RUST_TARGET) \
+		--out-dir build -L dependency=build \
+		-C panic=abort -C embed-bitcode=no \
+		$(RUSTFLAGS)
+
+RUST_SYSROOT := $(shell $(RUSTC) --print sysroot)
+RUSTLIB := $(RUST_SYSROOT)/lib/rustlib/src/rust/library
+
 .PHONY: all dirs clean
 
 all: $(TARGET)
@@ -10,11 +21,42 @@ dirs:
 clean:
 	rm -r build
 
-build/main.o: main.rs | dirs
-	rustc main.rs --emit=obj -o build/main.o -C panic=abort -C overflow-checks=off -C opt-level=z
+build/libcore.rmeta: | dirs
+	env RUSTC_BOOTSTRAP=1 $(COMPILE_RUST) --crate-name core \
+		$(RUSTLIB)/core/src/lib.rs \
+		--crate-type lib --emit metadata,link --cap-lints allow \
+		--cfg 'feature="optimize_for_size"'
 
-build/eval.o: eval.rs | dirs
-	rustc eval.rs --emit=obj -o build/eval.o -C panic=abort -C overflow-checks=off -C opt-level=z
+build/libcompiler_builtins.rmeta: build/libcore.rmeta
+	env RUSTC_BOOTSTRAP=1 $(COMPILE_RUST) --crate-name compiler_builtins \
+		$(RUSTLIB)/compiler-builtins/compiler-builtins/src/lib.rs \
+		--crate-type lib --emit metadata,link --cap-lints allow \
+		--extern core=$(@D)/libcore.rmeta \
+		--cfg 'feature="arch"' \
+		--cfg 'feature="compiler-builtins"' \
+		--cfg 'feature="default"' \
+		--cfg 'feature="unmangled-names"'
 
-$(TARGET): build/main.o build/eval.o | dirs 
-	clang build/main.o build/eval.o -o $(TARGET)
+build/librustc_std_workspace_core.rmeta: build/libcompiler_builtins.rmeta build/libcore.rmeta
+	env RUSTC_BOOTSTRAP=1 $(COMPILE_RUST) --crate-name rustc_std_workspace_core \
+		$(RUSTLIB)/rustc-std-workspace-core/lib.rs \
+		--crate-type lib --emit metadata,link --cap-lints allow \
+		--extern compiler_builtins=$(@D)/libcompiler_builtins.rmeta \
+		--extern core=$(@D)/libcore.rmeta \
+		--cfg='feature="optimize_for_size"'
+
+build/libpanic_abort.rmeta: build/librustc_std_workspace_core.rmeta
+	env RUSTC_BOOTSTRAP=1 $(COMPILE_RUST) --crate-name panic_abort \
+		$(RUSTLIB)/panic_abort/src/lib.rs \
+		--crate-type lib --emit metadata,link --cap-lints allow \
+		--extern core=$(@D)/librustc_std_workspace_core.rmeta
+
+$(TARGET): build/libcore.rmeta build/libcompiler_builtins.rmeta build/libpanic_abort.rmeta \
+		main.rs eval.rs
+	$(COMPILE_RUST) --crate-name $(@F) \
+		main.rs \
+		--crate-type bin --emit link \
+		--extern compiler_builtins=$(@D)/libcompiler_builtins.rlib \
+		--extern core=$(@D)/libcore.rlib \
+		--extern panic_abort=$(@D)/libpanic_abort.rlib \
+		-lc

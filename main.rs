@@ -1,44 +1,52 @@
 #![no_std]
 #![no_main]
 
-use core::ffi::{c_char, c_int, c_void};
-use core::panic::PanicInfo;
+mod libc {
+    use core::ffi::{c_char, c_int};
 
-extern "C" {
-    fn puts(msg: *const c_char);
-    fn printf(fmt: *const c_char, ...);
-    fn fgets(s: *mut c_char, n: c_int, stream: *mut c_void) -> *mut c_char;
+    enum Void {}
 
-    static mut stdin: *mut c_void;
+    #[repr(C)]
+    pub struct File(Void);
 
-    fn eval(s: *const c_char) -> i32;
+    unsafe extern "C" {
+
+        pub fn printf(fmt: *const c_char, ...);
+        pub fn fgets(s: *mut c_char, n: c_int, stream: *mut File) -> *mut c_char;
+
+        pub fn abort() -> !;
+
+        pub static mut stdin: *mut File;
+    }
 }
+
+mod eval;
+
+use core::ffi::CStr;
 
 #[panic_handler]
-unsafe fn panic(_info: &PanicInfo) -> ! {
-    puts("panic or sth\0".as_ptr() as *const c_char);
-    loop {}
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    unsafe { libc::abort() };
 }
 
-#[no_mangle]
-unsafe extern "C" fn _ZN4core9panicking30panic_null_pointer_dereference17h602c36c59c471956E() {}
-#[no_mangle]
-unsafe extern "C" fn _ZN4core9panicking11panic_const24panic_const_div_overflow17hed073de60461d30aE() {}
-
-#[no_mangle]
+#[unsafe(no_mangle)]
 unsafe extern "C" fn main() -> i32 {
-    puts("Hello, from calculator!\0".as_ptr() as *const c_char);
+    unsafe { libc::printf(c"Hello, from calculator!\n".as_ptr()) };
+
     loop {
-        const BUF_SIZE: usize = 128;
-        let mut buf = [0u8; BUF_SIZE];
-        let ptr = buf.as_mut_ptr() as *mut c_char;
-        
-        if fgets(ptr, BUF_SIZE as c_int, stdin).is_null() {
-            break;
+        let mut buf = [0u8; 128];
+
+        unsafe {
+            if libc::fgets(buf.as_mut_ptr() as _, buf.len() as _, libc::stdin).is_null() {
+                break;
+            }
         }
-        
-        let result = eval(ptr);
-        printf("result: %d\n\0".as_ptr() as *const c_char, result);
+
+        let expr = CStr::from_bytes_until_nul(&buf).unwrap_or_default();
+        let result = unsafe { eval::eval(expr.as_ptr()) };
+
+        unsafe { libc::printf(c"result: %d\n".as_ptr(), result) };
     }
-    return 0;
+
+    0
 }

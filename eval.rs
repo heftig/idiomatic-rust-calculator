@@ -89,8 +89,7 @@ unsafe fn parse_expr() -> i32 {
     res
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn eval(s: *const c_char) -> i32 {
+pub unsafe fn eval(s: *const c_char) -> i32 {
     INPUT = s;
     POS = 0;
     parse_expr()
