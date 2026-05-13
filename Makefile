@@ -1,11 +1,14 @@
 TARGET := build/calc
 
 RUSTC := rustc
-RUSTFLAGS := -C opt-level=z -C overflow-checks=off -C strip=symbols
+RUSTFLAGS := -C opt-level=z -C overflow-checks=off -C strip=symbols \
+	     -C linker=clang -C link-arg=-fuse-ld=lld -C linker-plugin-lto \
+	     -C lto=fat -C codegen-units=1
+
 RUST_TARGET := $(shell $(RUSTC) --print host-tuple)
 COMPILE_RUST := $(RUSTC) --edition 2024 --target $(RUST_TARGET) \
 		--out-dir build -L dependency=build \
-		-C panic=abort -C embed-bitcode=no \
+		-C panic=abort -C force-unwind-tables=no \
 		$(RUSTFLAGS)
 
 RUST_SYSROOT := $(shell $(RUSTC) --print sysroot)
