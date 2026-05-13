@@ -35,15 +35,19 @@ build/libcompiler_builtins.rmeta: build/libcore.rmeta
 		--cfg 'feature="arch"' \
 		--cfg 'feature="compiler-builtins"' \
 		--cfg 'feature="default"' \
-		--cfg 'feature="unmangled-names"'
+		--cfg 'feature="unmangled-names"' \
+		--cfg 'intrinsics_enabled' \
+		--cfg 'optimizations_enabled' \
+		--cfg 'f16_enabled' \
+		--cfg 'f128_enabled' \
+		--cfg 'mem_unaligned'
 
 build/librustc_std_workspace_core.rmeta: build/libcompiler_builtins.rmeta build/libcore.rmeta
 	env RUSTC_BOOTSTRAP=1 $(COMPILE_RUST) --crate-name rustc_std_workspace_core \
 		$(RUSTLIB)/rustc-std-workspace-core/lib.rs \
 		--crate-type lib --emit metadata,link --cap-lints allow \
 		--extern compiler_builtins=$(@D)/libcompiler_builtins.rmeta \
-		--extern core=$(@D)/libcore.rmeta \
-		--cfg='feature="optimize_for_size"'
+		--extern core=$(@D)/libcore.rmeta
 
 build/libpanic_abort.rmeta: build/librustc_std_workspace_core.rmeta
 	env RUSTC_BOOTSTRAP=1 $(COMPILE_RUST) --crate-name panic_abort \
